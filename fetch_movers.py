@@ -17,7 +17,8 @@ API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "demo")
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://continuo:continuo@localhost:5433/continuo")
 URL = "https://www.alphavantage.co/query"
 ROOT = Path(__file__).parent
-RAW_DIR = ROOT / "data" / "raw"
+# Overridable so the Lambda container can write to /tmp (its only writable path).
+RAW_DIR = Path(os.getenv("RAW_DIR", ROOT / "data" / "raw"))
 SCHEMA = ROOT / "db" / "schema.sql"
 
 UPSERT = """
@@ -73,12 +74,19 @@ def store(rows: list[dict]) -> None:
     print(f"Upserted {len(rows)} rows into top_movers.")
 
 
-def main() -> None:
+def run() -> dict:
+    """Full ingestion pipeline. Returns a summary (used as the Lambda response)."""
     data = fetch_movers()
     rows = parse_rows(data)
     raw_path = save_raw(data)
-    print(f"Fetched {len(rows)} movers for {rows[0]['date']} (raw: {raw_path.name})")
     store(rows)
+    return {"date": str(rows[0]["date"]), "rows": len(rows), "raw": str(raw_path)}
+
+
+def main() -> None:
+    summary = run()
+    print(f"Fetched {summary['rows']} movers for {summary['date']} "
+          f"(raw: {Path(summary['raw']).name}); upserted into top_movers.")
 
 
 if __name__ == "__main__":

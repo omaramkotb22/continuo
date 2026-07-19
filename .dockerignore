@@ -1,0 +1,10 @@
+.git
+.venv
+venv
+.env
+data
+reports
+logs
+__pycache__
+*.pyc
+plot_movers.py

@@ -1,0 +1,4 @@
+# Runtime deps for the ingestion container / Lambda (no matplotlib — that's local-only).
+requests>=2.31
+python-dotenv>=1.0
+psycopg[binary]>=3.1
