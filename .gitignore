@@ -1,0 +1,18 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Data (raw ingested JSON is reproducible / not source)
+data/raw/*.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
