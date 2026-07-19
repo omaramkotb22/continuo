@@ -1,17 +1,34 @@
-"""Day 1: pull today's top gainers/losers from Alpha Vantage, print them, save raw JSON."""
+"""Ingest today's Alpha Vantage top gainers/losers: save raw JSON + upsert into Postgres.
+
+Idempotent: re-running for the same trading date updates rows in place (no duplicates).
+"""
 import json
 import os
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
+import psycopg
 import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "demo")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://continuo:continuo@localhost:5433/continuo")
 URL = "https://www.alphavantage.co/query"
-RAW_DIR = Path(__file__).parent / "data" / "raw"
+ROOT = Path(__file__).parent
+RAW_DIR = ROOT / "data" / "raw"
+SCHEMA = ROOT / "db" / "schema.sql"
+
+UPSERT = """
+INSERT INTO top_movers (ticker, date, direction, pct_change, price, volume)
+VALUES (%(ticker)s, %(date)s, %(direction)s, %(pct_change)s, %(price)s, %(volume)s)
+ON CONFLICT (ticker, date) DO UPDATE SET
+    direction  = EXCLUDED.direction,
+    pct_change = EXCLUDED.pct_change,
+    price      = EXCLUDED.price,
+    volume     = EXCLUDED.volume;
+"""
 
 
 def fetch_movers() -> dict:
@@ -24,17 +41,44 @@ def fetch_movers() -> dict:
     return data
 
 
-def main() -> None:
-    data = fetch_movers()
-    for label, key in [("TOP GAINERS", "top_gainers"), ("TOP LOSERS", "top_losers")]:
-        print(f"\n{label} ({data.get('last_updated', '?')})")
-        for row in data[key][:5]:
-            print(f"  {row['ticker']:<8} {row['price']:>10}  {row['change_percentage']:>8}  vol={row['volume']}")
+def parse_rows(data: dict) -> list[dict]:
+    """Flatten gainers + losers into DB rows. most_actively_traded is ignored (schema is gainer/loser)."""
+    trading_date = datetime.strptime(data["last_updated"].split()[0], "%Y-%m-%d").date()
+    rows = []
+    for direction, key in [("gainer", "top_gainers"), ("loser", "top_losers")]:
+        for r in data[key]:
+            rows.append({
+                "ticker": r["ticker"],
+                "date": trading_date,
+                "direction": direction,
+                "pct_change": float(r["change_percentage"].rstrip("%")),
+                "price": float(r["price"]),
+                "volume": int(r["volume"]),
+            })
+    return rows
 
+
+def save_raw(data: dict) -> Path:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     out = RAW_DIR / f"movers_{date.today().isoformat()}.json"
     out.write_text(json.dumps(data, indent=2))
-    print(f"\nSaved {out}")
+    return out
+
+
+def store(rows: list[dict]) -> None:
+    with psycopg.connect(DATABASE_URL) as conn:
+        conn.execute(SCHEMA.read_text())  # ensure table exists (idempotent)
+        with conn.cursor() as cur:
+            cur.executemany(UPSERT, rows)
+    print(f"Upserted {len(rows)} rows into top_movers.")
+
+
+def main() -> None:
+    data = fetch_movers()
+    rows = parse_rows(data)
+    raw_path = save_raw(data)
+    print(f"Fetched {len(rows)} movers for {rows[0]['date']} (raw: {raw_path.name})")
+    store(rows)
 
 
 if __name__ == "__main__":

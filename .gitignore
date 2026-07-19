@@ -12,6 +12,9 @@ venv/
 # Data (raw ingested JSON is reproducible / not source)
 data/raw/*.json
 
+# Cron / run logs
+logs/
+
 # OS / editor
 .DS_Store
 .idea/
