@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+region                = "us-east-1"
+db_password           = "change-me-to-a-strong-password"
+alpha_vantage_api_key = "your-alpha-vantage-key"
+
+# Optional: lock Postgres to your IP for interactive use (Lambda still reaches it
+# over the public endpoint; the password is the real control). Example:
+# db_ingress_cidr = "203.0.113.4/32"

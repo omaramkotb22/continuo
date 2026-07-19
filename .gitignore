@@ -15,6 +15,13 @@ data/raw/*.json
 # Cron / run logs
 logs/
 
+# Terraform (lock file .terraform.lock.hcl IS committed — pins provider versions)
+infra/.terraform/
+*.tfstate
+*.tfstate.*
+infra/terraform.tfvars
+crash.log
+
 # OS / editor
 .DS_Store
 .idea/

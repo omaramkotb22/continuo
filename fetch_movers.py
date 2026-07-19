@@ -59,11 +59,19 @@ def parse_rows(data: dict) -> list[dict]:
     return rows
 
 
-def save_raw(data: dict) -> Path:
+def save_raw(data: dict) -> str:
+    """Archive raw JSON. Uploads to S3 when RAW_BUCKET is set (AWS), else writes locally."""
+    key = f"raw/movers_{date.today().isoformat()}.json"
+    payload = json.dumps(data, indent=2)
+    bucket = os.getenv("RAW_BUCKET")
+    if bucket:
+        import boto3  # provided by the Lambda base image; not a local dev dep
+        boto3.client("s3").put_object(Bucket=bucket, Key=key, Body=payload.encode())
+        return f"s3://{bucket}/{key}"
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     out = RAW_DIR / f"movers_{date.today().isoformat()}.json"
-    out.write_text(json.dumps(data, indent=2))
-    return out
+    out.write_text(payload)
+    return str(out)
 
 
 def store(rows: list[dict]) -> None:

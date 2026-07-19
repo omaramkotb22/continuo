@@ -37,6 +37,37 @@ at 01:30 Asia/Dubai — just after the US market close:
 30 1 * * * /path/to/continuo/run_daily.sh # continuo-daily-ingest
 ```
 
+## AWS deployment (Days 4–7)
+
+The ingestion runs on AWS as a scheduled container Lambda. Terraform ([infra/](infra/))
+provisions ECR, an S3 raw archive, RDS Postgres (`db.t4g.micro`), a least-privilege
+Lambda role, the ingestion Lambda (from the container image), and an EventBridge rule
+(21:30 UTC Mon–Fri, after the US close).
+
+```bash
+aws sso login                                   # authenticate first
+cd infra
+cp terraform.tfvars.example terraform.tfvars    # fill in db_password + alpha_vantage_api_key
+./deploy.sh                                      # create ECR → build+push image → apply stack
+
+# manually invoke the ingestion Lambda (writes a row to RDS + JSON to S3):
+aws lambda invoke --function-name "$(terraform output -raw lambda_function_name)" /dev/stdout
+```
+
+`deploy.sh` resolves the image chicken-and-egg (Lambda needs an image that exists
+first) by creating the ECR repo, pushing `linux/amd64`, then applying the rest.
+
+## Known limitations
+
+- **Public RDS.** To avoid a NAT gateway (~$32/mo), the non-VPC Lambda reaches RDS
+  over its public endpoint; the security group defaults to open on 5432 and the
+  master password is the real control. Tighten `db_ingress_cidr` for interactive use.
+- **Secrets in Lambda env.** `DATABASE_URL` (with password) and the API key live in
+  the Lambda environment / Terraform state, not Secrets Manager — a cost/complexity
+  tradeoff for a portfolio project.
+- Costs money while up: RDS `db.t4g.micro` is ~free-tier-eligible (<12mo accounts),
+  otherwise ~$12–15/mo. `terraform destroy` tears it all down.
+
 ## Sample output
 
 ![Top movers chart](reports/movers_2026-07-17.png)
