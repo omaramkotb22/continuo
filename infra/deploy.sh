@@ -8,7 +8,15 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
-REGION="$(terraform output -raw region 2>/dev/null || sed -n 's/^region *= *"\(.*\)"/\1/p' terraform.tfvars 2>/dev/null || echo us-east-1)"
+
+# Terraform's AWS provider reads standard env/shared creds, not custom CLI wrappers
+# (e.g. the `login_session` profile). If no creds are already in the env, materialize
+# the CLI's resolved (possibly temporary) credentials so Terraform can use them.
+if [ -z "${AWS_ACCESS_KEY_ID:-}" ] && aws configure export-credentials --format env >/dev/null 2>&1; then
+  eval "$(aws configure export-credentials --format env)"
+fi
+
+REGION="$(sed -n 's/^region *= *"\(.*\)"/\1/p' terraform.tfvars 2>/dev/null || echo us-east-1)"
 
 terraform init -input=false
 
@@ -20,7 +28,9 @@ REGISTRY="${REPO%%/*}"
 
 echo "== 2/3: build + push image ($REPO:latest) =="
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"
-docker build --platform linux/amd64 -t "$REPO:latest" ..
+# --provenance=false: skip BuildKit's attestation manifest, which turns the push into
+# an OCI manifest index that Lambda's container runtime rejects ("media type ... not supported").
+docker build --provenance=false --platform linux/amd64 -t "$REPO:latest" ..
 docker push "$REPO:latest"
 
 echo "== 3/3: apply full stack =="
