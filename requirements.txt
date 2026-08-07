@@ -1,4 +1,4 @@
+# Local dev: ingestion + plotting + ML (see requirements-ingest.txt / requirements-ml.txt for the split).
+-r requirements-ml.txt
 requests>=2.31
-python-dotenv>=1.0
-psycopg[binary]>=3.1
 matplotlib>=3.8
